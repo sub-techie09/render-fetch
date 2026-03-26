@@ -1,0 +1,69 @@
+{
+  "name": "render-fetch",
+  "version": "0.1.0",
+  "description": "Drop-in upgrade to Claude's WebFetch — auto-detects static vs JS-rendered pages and returns clean markdown",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "render-fetch": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "postbuild": "node --input-type=module -e \"import fs from 'fs'; const f='dist/index.js'; const c=fs.readFileSync(f,'utf8'); if(!c.startsWith('#!/usr/bin/env node')){fs.writeFileSync(f,'#!/usr/bin/env node\\n'+c);}\"",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:integration": "INTEGRATION_TESTS=true vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src tests --ext .ts",
+    "lint:fix": "eslint src tests --ext .ts --fix",
+    "typecheck": "tsc --noEmit",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "claude",
+    "fetch",
+    "playwright",
+    "web-scraping",
+    "javascript-rendering",
+    "browser-automation"
+  ],
+  "author": "sub-techie09",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sub-techie09/render-fetch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/sub-techie09/render-fetch/issues"
+  },
+  "homepage": "https://github.com/sub-techie09/render-fetch#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@mozilla/readability": "^0.5.0",
+    "cheerio": "^1.0.0",
+    "jsdom": "^24.0.0",
+    "playwright": "^1.44.0",
+    "turndown": "^7.1.2",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "^21.0.0",
+    "@types/node": "^20.0.0",
+    "@types/turndown": "^5.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vitest/coverage-v8": "^1.6.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}
