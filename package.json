@@ -1,6 +1,7 @@
 {
   "name": "render-fetch",
   "version": "0.1.1",
+  "mcpName": "io.github.sub-techie09/render-fetch",
   "description": "Drop-in upgrade to Claude's WebFetch — auto-detects static vs JS-rendered pages and returns clean markdown",
   "type": "module",
   "engines": {
