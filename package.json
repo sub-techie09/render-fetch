@@ -1,6 +1,6 @@
 {
   "name": "render-fetch",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Drop-in upgrade to Claude's WebFetch — auto-detects static vs JS-rendered pages and returns clean markdown",
   "type": "module",
   "engines": {
@@ -40,7 +40,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/sub-techie09/render-fetch.git"
+    "url": "git+https://github.com/sub-techie09/render-fetch.git"
   },
   "bugs": {
     "url": "https://github.com/sub-techie09/render-fetch/issues"
