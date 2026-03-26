@@ -47,7 +47,7 @@ export async function route(options: FetchOptions): Promise<RouterResult> {
 
   let resolvedMode = options.mode;
   let body: string | undefined;
-  let responseHeaders: Record<string, string> = {};
+  const responseHeaders: Record<string, string> = {};
 
   // Auto-detection: fetch once, reuse for both detection and extraction
   if (options.mode === 'auto') {
