@@ -1,0 +1,12 @@
+src/
+tests/
+.github/
+tsconfig.json
+vitest.config.ts
+eslint.config.js
+*.map
+coverage/
+CONTRIBUTING.md
+CHANGELOG.md
+.gitignore
+.npmignore
