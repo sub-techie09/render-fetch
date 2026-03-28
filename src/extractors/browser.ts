@@ -1,5 +1,5 @@
 import { execSync } from 'child_process';
-import type { Browser, BrowserContext } from 'playwright';
+import type { Browser, BrowserContext, Page } from 'playwright';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import TurndownService from 'turndown';
@@ -48,7 +48,7 @@ async function createStealthContext(b: Browser): Promise<BrowserContext> {
 }
 
 /** Patches the webdriver flag before any page JS runs. Must be called before goto(). */
-async function applyStealthPage(page: import('playwright').Page): Promise<void> {
+async function applyStealthPage(page: Page): Promise<void> {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
     Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
