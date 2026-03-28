@@ -2,11 +2,11 @@ import type { FetchResult, FetchOptions, FetchRawOptions } from './types.js';
 import { validateUrl } from './utils/validate.js';
 import { detectRenderingMode } from './utils/detect.js';
 import { extractStatic } from './extractors/static.js';
-import { extractBrowser } from './extractors/browser.js';
+import { extractBrowser, rawBrowser } from './extractors/browser.js';
+import { USER_AGENT } from './constants.js';
 
 const MAX_RESPONSE_SIZE = 10 * 1024 * 1024;
 const MAX_REDIRECTS = 5;
-const USER_AGENT = 'render-fetch/0.1 (https://github.com/sub-techie09/render-fetch)';
 
 /** Fetch with manual redirect following so each redirect target is SSRF-validated. */
 async function safeFetch(urlString: string, timeout: number): Promise<Response> {
@@ -113,20 +113,7 @@ export async function routeRaw(options: FetchRawOptions): Promise<string> {
     resolvedMode = detected;
 
     if (resolvedMode === 'browser') {
-      const { chromium } = await import('playwright');
-      const b = await chromium.launch({ headless: true });
-      try {
-        const context = await b.newContext({ userAgent: USER_AGENT });
-        try {
-          const page = await context.newPage();
-          await page.goto(urlString, { waitUntil: 'networkidle', timeout: options.timeout });
-          return await page.evaluate(() => document.documentElement.outerHTML);
-        } finally {
-          await context.close();
-        }
-      } finally {
-        await b.close();
-      }
+      return rawBrowser(urlString, options.timeout);
     }
 
     return body;

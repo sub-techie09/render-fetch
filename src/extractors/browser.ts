@@ -1,13 +1,13 @@
 import { execSync } from 'child_process';
-import type { Browser } from 'playwright';
+import type { Browser, BrowserContext } from 'playwright';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import TurndownService from 'turndown';
 import type { FetchResult } from '../types.js';
 import { cleanMarkdown } from '../utils/markdown.js';
+import { USER_AGENT } from '../constants.js';
 
 const MAX_SCREENSHOT_SIZE = 2 * 1024 * 1024; // 2MB
-const USER_AGENT = 'render-fetch/0.1 (https://github.com/sub-techie09/render-fetch)';
 
 const turndown = new TurndownService({
   headingStyle: 'atx',
@@ -17,32 +17,46 @@ const turndown = new TurndownService({
 
 // Singleton browser instance
 let browser: Browser | null = null;
-let browserInitializing = false;
+let browserPromise: Promise<Browser> | null = null;
+let runtimeUserAgent: string | null = null;
 
-async function getBrowser(): Promise<Browser> {
+export async function getBrowser(): Promise<Browser> {
   if (browser?.isConnected()) return browser;
-
-  if (browserInitializing) {
-    // Wait for initialization
-    await new Promise<void>((resolve) => {
-      const check = setInterval(() => {
-        if (!browserInitializing) { clearInterval(check); resolve(); }
-      }, 100);
-    });
-    if (browser?.isConnected()) return browser;
+  if (!browserPromise) {
+    browserPromise = (async () => {
+      const { chromium } = await import('playwright');
+      browser = await chromium.launch({
+        headless: true,
+        timeout: 15000,
+        args: ['--disable-blink-features=AutomationControlled'],
+      });
+      const version = browser.version(); // e.g. "123.0.6312.58"
+      const major = version.split('.')[0];
+      runtimeUserAgent = `Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${major}.0.0.0 Safari/537.36`;
+      return browser;
+    })().finally(() => { browserPromise = null; });
   }
+  return browserPromise;
+}
 
-  browserInitializing = true;
-  try {
-    const { chromium } = await import('playwright');
-    browser = await chromium.launch({
-      headless: true,
-      timeout: 15000,
-    });
-    return browser;
-  } finally {
-    browserInitializing = false;
-  }
+/** Creates a browser context with stealth patches applied. */
+async function createStealthContext(b: Browser): Promise<BrowserContext> {
+  return b.newContext({
+    userAgent: runtimeUserAgent ?? USER_AGENT,
+    extraHTTPHeaders: { 'Accept-Language': 'en-US,en;q=0.9' },
+  });
+}
+
+/** Patches the webdriver flag before any page JS runs. Must be called before goto(). */
+async function applyStealthPage(page: import('playwright').Page): Promise<void> {
+  await page.addInitScript(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+    const w = window as Window & { chrome?: unknown };
+    if (!w.chrome) {
+      w.chrome = { runtime: {} };
+    }
+  });
 }
 
 export async function ensureChromium(): Promise<void> {
@@ -71,47 +85,57 @@ export interface BrowserExtractOptions {
 
 export async function extractBrowser(options: BrowserExtractOptions): Promise<FetchResult> {
   const { url, maxLength, timeout } = options;
+
   const b = await getBrowser();
-  const context = await b.newContext({ userAgent: USER_AGENT });
+  const context = await createStealthContext(b);
 
   try {
     const page = await context.newPage();
+    await applyStealthPage(page);
 
     // Block resources that don't contribute to text content
+    // Note: stylesheets are allowed — some SPAs gate rendering behind CSS class checks
     await page.route('**/*', (route) => {
-      const resourceType = route.request().resourceType();
-      if (['image', 'media', 'font', 'stylesheet'].includes(resourceType)) {
+      if (['image', 'media', 'font'].includes(route.request().resourceType())) {
         route.abort();
       } else {
         route.continue();
       }
     });
 
-    // Navigate with networkidle fallback
-    try {
-      await page.goto(url, { waitUntil: 'networkidle', timeout });
-    } catch {
-      // Fallback: domcontentloaded is less thorough but more reliable
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
-      await page.waitForTimeout(1500);
-    }
+    // Navigate then wait for meaningful content rather than a fixed timeout
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
+
+    // Race networkidle: fires if the page settles within 3s, falls through silently if not
+    await page.waitForLoadState('networkidle', { timeout: 3000 }).catch(() => {});
+
+    // Compound content readiness: wait for a semantic container with enough text blocks
+    await page.waitForFunction(
+      () => {
+        const candidates = document.querySelectorAll('article, [role="main"], main, #content, #main');
+        for (const el of candidates) {
+          const text = ((el as HTMLElement).innerText || '').replace(/\s+/g, ' ').trim();
+          if (text.length < 400) continue;
+          const blocks = [...document.querySelectorAll('p, li, h1, h2, h3')]
+            .filter(n => ((n as HTMLElement).innerText || '').trim().length > 40).length;
+          if (blocks >= 2) return true;
+        }
+        return false;
+      },
+      { polling: 250, timeout: 10000 }
+    ).catch(() => {/* fall through — extract whatever is there */});
 
     const html = await page.evaluate(() => document.documentElement.innerHTML);
     const pageTitle = await page.title();
 
-    // Extract with Readability
     const dom = new JSDOM(html, { url });
     const reader = new Readability(dom.window.document);
     const article = reader.parse();
 
-    let markdownContent: string;
     const title = article?.title ?? pageTitle;
-
-    if (article?.content) {
-      markdownContent = turndown.turndown(article.content);
-    } else {
-      markdownContent = turndown.turndown(html);
-    }
+    const markdownContent = article?.content
+      ? turndown.turndown(article.content)
+      : turndown.turndown(html);
 
     const { content, truncated } = cleanMarkdown(markdownContent, {
       maxLength,
@@ -133,12 +157,28 @@ export async function extractBrowser(options: BrowserExtractOptions): Promise<Fe
   }
 }
 
-export async function screenshotBrowser(url: string, fullPage: boolean, timeout: number): Promise<string> {
+export async function rawBrowser(url: string, timeout: number): Promise<string> {
   const b = await getBrowser();
-  const context = await b.newContext({ userAgent: USER_AGENT });
-
+  const context = await createStealthContext(b);
   try {
     const page = await context.newPage();
+    await applyStealthPage(page);
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout });
+    // rawBrowser is a diagnostic tool — fixed wait is intentional, not a bug.
+    // Callers get the raw HTML at ~2s post-paint, not content-readiness-gated output.
+    await page.waitForTimeout(2000);
+    return page.evaluate(() => document.documentElement.outerHTML);
+  } finally {
+    await context.close();
+  }
+}
+
+export async function screenshotBrowser(url: string, fullPage: boolean, timeout: number): Promise<string> {
+  const b = await getBrowser();
+  const context = await createStealthContext(b);
+  try {
+    const page = await context.newPage();
+    await applyStealthPage(page);
     await page.goto(url, { waitUntil: 'networkidle', timeout });
 
     const buffer = await page.screenshot({ type: 'png', fullPage });

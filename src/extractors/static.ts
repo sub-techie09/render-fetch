@@ -4,9 +4,9 @@ import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
 import type { FetchResult } from '../types.js';
 import { cleanMarkdown } from '../utils/markdown.js';
+import { USER_AGENT } from '../constants.js';
 
 const MAX_RESPONSE_SIZE = 10 * 1024 * 1024; // 10MB
-const USER_AGENT = 'render-fetch/0.1 (https://github.com/sub-techie09/render-fetch)';
 
 const turndown = new TurndownService({
   headingStyle: 'atx',
